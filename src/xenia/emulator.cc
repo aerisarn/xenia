@@ -119,28 +119,28 @@ Emulator::Emulator(const std::filesystem::path& command_line,
       paused_(false),
       restoring_(false),
       restore_fence_() {
-#if XE_PLATFORM_WIN32 == 1
-  // Show a disclaimer that links to the quickstart
-  // guide the first time they ever open the emulator
-  uint64_t persistent_flags = GetPersistentEmulatorFlags();
-  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged)) {
-    if ((MessageBoxW(
-             nullptr,
-             L"DISCLAIMER: Xenia is not for enabling illegal activity, and "
-             "support is unavailable for illegally obtained software.\n\n"
-             "Please respect this policy as no further reminders will be "
-             "given.\n\nThe quickstart guide explains how to use digital or "
-             "physical games from your Xbox 360 console.\n\nWould you like "
-             "to open it?",
-             L"Xenia", MB_YESNO | MB_ICONQUESTION) == IDYES)) {
-      LaunchWebBrowser(
-          "https://github.com/xenia-project/xenia/wiki/"
-          "Quickstart#how-to-rip-games");
-    }
-    SetPersistentEmulatorFlags(persistent_flags |
-                               EmulatorFlagDisclaimerAcknowledged);
-  }
-#endif
+  //#if XE_PLATFORM_WIN32 == 1
+//  // Show a disclaimer that links to the quickstart
+//  // guide the first time they ever open the emulator
+//  uint64_t persistent_flags = GetPersistentEmulatorFlags();
+//  if (!(persistent_flags & EmulatorFlagDisclaimerAcknowledged)) {
+//    if ((MessageBoxW(
+//             nullptr,
+//             L"DISCLAIMER: Xenia is not for enabling illegal activity, and "
+//             "support is unavailable for illegally obtained software.\n\n"
+//             "Please respect this policy as no further reminders will be "
+//             "given.\n\nThe quickstart guide explains how to use digital or "
+//             "physical games from your Xbox 360 console.\n\nWould you like "
+//             "to open it?",
+//             L"Xenia", MB_YESNO | MB_ICONQUESTION) == IDYES)) {
+//      LaunchWebBrowser(
+//          "https://github.com/xenia-project/xenia/wiki/"
+//          "Quickstart#how-to-rip-games");
+//    }
+//    SetPersistentEmulatorFlags(persistent_flags |
+//                               EmulatorFlagDisclaimerAcknowledged);
+//  }
+//#endif
 }
 
 Emulator::~Emulator() {
