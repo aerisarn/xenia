@@ -574,123 +574,6 @@ dword_result_t XamShowSigninUI_entry(dword_t unk, dword_t unk_mask) {
 }
 DECLARE_XAM_EXPORT1(XamShowSigninUI, kUserProfiles, kStub);
 
-// TODO(gibbed): probably a FILETIME/LARGE_INTEGER, unknown currently
-struct X_ACHIEVEMENT_UNLOCK_TIME {
-  xe::be<uint32_t> unk_0;
-  xe::be<uint32_t> unk_4;
-};
-
-struct X_ACHIEVEMENT_DETAILS {
-  xe::be<uint32_t> id;
-  xe::be<uint32_t> label_ptr;
-  xe::be<uint32_t> description_ptr;
-  xe::be<uint32_t> unachieved_ptr;
-  xe::be<uint32_t> image_id;
-  xe::be<uint32_t> gamerscore;
-  X_ACHIEVEMENT_UNLOCK_TIME unlock_time;
-  xe::be<uint32_t> flags;
-
-  static const size_t kStringBufferSize = 464;
-};
-static_assert_size(X_ACHIEVEMENT_DETAILS, 36);
-
-class XStaticAchievementEnumerator : public XEnumerator {
- public:
-  struct AchievementDetails {
-    uint32_t id;
-    std::u16string label;
-    std::u16string description;
-    std::u16string unachieved;
-    uint32_t image_id;
-    uint32_t gamerscore;
-    struct {
-      uint32_t unk_0;
-      uint32_t unk_4;
-    } unlock_time;
-    uint32_t flags;
-  };
-
-  XStaticAchievementEnumerator(KernelState* kernel_state,
-                               size_t items_per_enumerate, uint32_t flags)
-      : XEnumerator(
-            kernel_state, items_per_enumerate,
-            sizeof(X_ACHIEVEMENT_DETAILS) +
-                (!!(flags & 7) ? X_ACHIEVEMENT_DETAILS::kStringBufferSize : 0)),
-        flags_(flags) {}
-
-  void AppendItem(AchievementDetails item) {
-    items_.push_back(std::move(item));
-  }
-
-  uint32_t WriteItems(uint32_t buffer_ptr, uint8_t* buffer_data,
-                      uint32_t* written_count) override {
-    size_t count =
-        std::min(items_.size() - current_item_, items_per_enumerate());
-    if (!count) {
-      return X_ERROR_NO_MORE_FILES;
-    }
-
-    size_t size = count * item_size();
-
-    auto details = reinterpret_cast<X_ACHIEVEMENT_DETAILS*>(buffer_data);
-    size_t string_offset =
-        items_per_enumerate() * sizeof(X_ACHIEVEMENT_DETAILS);
-    auto string_buffer =
-        StringBuffer{buffer_ptr + static_cast<uint32_t>(string_offset),
-                     &buffer_data[string_offset],
-                     count * X_ACHIEVEMENT_DETAILS::kStringBufferSize};
-    for (size_t i = 0, o = current_item_; i < count; ++i, ++current_item_) {
-      const auto& item = items_[current_item_];
-      details[i].id = item.id;
-      details[i].label_ptr =
-          !!(flags_ & 1) ? AppendString(string_buffer, item.label) : 0;
-      details[i].description_ptr =
-          !!(flags_ & 2) ? AppendString(string_buffer, item.description) : 0;
-      details[i].unachieved_ptr =
-          !!(flags_ & 4) ? AppendString(string_buffer, item.unachieved) : 0;
-      details[i].image_id = item.image_id;
-      details[i].gamerscore = item.gamerscore;
-      details[i].unlock_time.unk_0 = item.unlock_time.unk_0;
-      details[i].unlock_time.unk_4 = item.unlock_time.unk_4;
-      details[i].flags = item.flags;
-    }
-
-    if (written_count) {
-      *written_count = static_cast<uint32_t>(count);
-    }
-
-    return X_ERROR_SUCCESS;
-  }
-
- private:
-  struct StringBuffer {
-    uint32_t ptr;
-    uint8_t* data;
-    size_t remaining_bytes;
-  };
-
-  uint32_t AppendString(StringBuffer& sb, const std::u16string_view string) {
-    size_t count = string.length() + 1;
-    size_t size = count * sizeof(char16_t);
-    if (size > sb.remaining_bytes) {
-      assert_always();
-      return 0;
-    }
-    auto ptr = sb.ptr;
-    string_util::copy_and_swap_truncating(reinterpret_cast<char16_t*>(sb.data),
-                                          string, count);
-    sb.ptr += static_cast<uint32_t>(size);
-    sb.data += size;
-    sb.remaining_bytes -= size;
-    return ptr;
-  }
-
- private:
-  uint32_t flags_;
-  std::vector<AchievementDetails> items_;
-  size_t current_item_ = 0;
-};
-
 dword_result_t XamUserCreateAchievementEnumerator_entry(
     dword_t title_id, dword_t user_index, dword_t xuid, dword_t flags,
     dword_t offset, dword_t count, lpdword_t buffer_size_ptr,
@@ -712,8 +595,8 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
     *buffer_size_ptr = static_cast<uint32_t>(entry_size) * count;
   }
 
-  auto e = object_ref<XStaticAchievementEnumerator>(
-      new XStaticAchievementEnumerator(kernel_state(), count, flags));
+  auto e = object_ref<XAchievementEnumerator>(
+      new XAchievementEnumerator(kernel_state(), count, flags));
   auto result = e->Initialize(user_index, 0xFB, 0xB000A, 0xB000B, 0);
   if (XFAILED(result)) {
     return result;
@@ -728,15 +611,23 @@ dword_result_t XamUserCreateAchievementEnumerator_entry(
         db.GetAchievements();
 
     for (const util::XdbfAchievementTableEntry& entry : achievement_list) {
-      auto item = XStaticAchievementEnumerator::AchievementDetails{
+      auto is_unlocked =
+          kernel_state()->achievement_manager()->IsAchievementUnlocked(
+              entry.id);
+      auto unlock_time =
+          kernel_state()->achievement_manager()->GetAchievementUnlockTime(
+              entry.id);
+
+      auto item = XAchievementEnumerator::AchievementDetails{
           entry.id,
           xe::to_utf16(db.GetStringTableEntry(language, entry.label_id)),
           xe::to_utf16(db.GetStringTableEntry(language, entry.description_id)),
           xe::to_utf16(db.GetStringTableEntry(language, entry.unachieved_id)),
           entry.image_id,
           entry.gamerscore,
-          {0, 0},
-          entry.flags};
+          (uint32_t)(unlock_time << 31),
+          (uint32_t)unlock_time,
+          is_unlocked ? entry.flags | 0x20000 : entry.flags};
 
       e->AppendItem(item);
     }
@@ -808,9 +699,9 @@ dword_result_t XamSessionRefObjByHandle_entry(dword_t handle,
 }
 DECLARE_XAM_EXPORT1(XamSessionRefObjByHandle, kUserProfiles, kStub);
 
-dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(dword_t unk1, dword_t unk2,
-                                                       lpdword_t unk3, dword_t unk4,
-                                                       dword_t unk5, dword_t unk6) {
+dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(
+    dword_t unk1, dword_t unk2, lpdword_t unk3, dword_t unk4, dword_t unk5,
+    dword_t unk6) {
   if (!unk3 || unk1 != 255 && unk1 >= 4) {
     return 87;
   }
@@ -819,9 +710,10 @@ dword_result_t XamUserIsUnsafeProgrammingAllowed_entry(dword_t unk1, dword_t unk
 }
 DECLARE_XAM_EXPORT1(XamUserIsUnsafeProgrammingAllowed, kUserProfiles, kStub);
 
-dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index, dword_t unk2,
-                                                dword_t unk3, dword_t unk4,
-                                                dword_t unk5, dword_t unk6) {
+dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index,
+                                                dword_t unk2, dword_t unk3,
+                                                dword_t unk4, dword_t unk5,
+                                                dword_t unk6) {
   if (!unk2 || !unk3 || user_index > 4) {
     return 0x80070057;
   }
@@ -829,6 +721,51 @@ dword_result_t XamUserGetSubscriptionType_entry(dword_t user_index, dword_t unk2
   return 0;
 }
 DECLARE_XAM_EXPORT1(XamUserGetSubscriptionType, kUserProfiles, kStub);
+
+constexpr uint8_t kStatsMaxAmount = 64;
+
+struct X_STATS_DETAILS {
+  xe::be<uint32_t> id;
+  xe::be<uint32_t> stats_amount;
+  xe::be<uint16_t> stats[kStatsMaxAmount];
+};
+static_assert_size(X_STATS_DETAILS, 8 + kStatsMaxAmount * 2);
+
+dword_result_t XamUserCreateStatsEnumerator_entry(
+    dword_t title_id, dword_t user_index, dword_t count, dword_t flags,
+    dword_t size, pointer_t<X_STATS_DETAILS> stats_ptr,
+    lpdword_t buffer_size_ptr, lpdword_t handle_ptr) {
+  if (!count || !buffer_size_ptr || !handle_ptr || !stats_ptr) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (user_index >= 4) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!flags || flags > 0x64) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (!size) {
+    return X_ERROR_INVALID_PARAMETER;
+  }
+
+  if (buffer_size_ptr) {
+    *buffer_size_ptr = 0; // sizeof(X_STATS_DETAILS) * stats_ptr->stats_amount;
+  }
+
+  auto e = object_ref<XUserStatsEnumerator>(
+      new XUserStatsEnumerator(kernel_state(), 0));
+  const X_STATUS result = e->Initialize(user_index, 0xFB, 0xB0023, 0xB0024, 0);
+  if (XFAILED(result)) {
+    return result;
+  }
+
+  *handle_ptr = e->handle();
+  return X_ERROR_SUCCESS;
+}
+DECLARE_XAM_EXPORT1(XamUserCreateStatsEnumerator, kUserProfiles, kSketchy);
 
 }  // namespace xam
 }  // namespace kernel

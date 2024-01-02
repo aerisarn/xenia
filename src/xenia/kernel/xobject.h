@@ -62,28 +62,6 @@ typedef struct {
 } X_DISPATCH_HEADER;
 static_assert_size(X_DISPATCH_HEADER, 0x10);
 
-// https://www.nirsoft.net/kernel_struct/vista/OBJECT_HEADER.html
-struct X_OBJECT_HEADER {
-  xe::be<uint32_t> pointer_count;
-  union {
-    xe::be<uint32_t> handle_count;
-    xe::be<uint32_t> next_to_free;
-  };
-  uint8_t name_info_offset;
-  uint8_t handle_info_offset;
-  uint8_t quota_info_offset;
-  uint8_t flags;
-  union {
-    xe::be<uint32_t> object_create_info;  // X_OBJECT_CREATE_INFORMATION
-    xe::be<uint32_t> quota_block_charged;
-  };
-  xe::be<uint32_t> object_type_ptr;  // -0x8 POBJECT_TYPE
-  xe::be<uint32_t> unk_04;           // -0x4
-
-  // Object lives after this header.
-  // (There's actually a body field here which is the object itself)
-};
-
 // https://www.nirsoft.net/kernel_struct/vista/OBJECT_CREATE_INFORMATION.html
 struct X_OBJECT_CREATE_INFORMATION {
   xe::be<uint32_t> attributes;                  // 0x0
@@ -97,16 +75,6 @@ struct X_OBJECT_CREATE_INFORMATION {
   xe::be<uint32_t> security_qos_ptr;            // 0x20
 
   // Security QoS here (SECURITY_QUALITY_OF_SERVICE) too!
-};
-
-struct X_OBJECT_TYPE {
-  xe::be<uint32_t> constructor;  // 0x0
-  xe::be<uint32_t> destructor;   // 0x4
-  xe::be<uint32_t> unk_08;       // 0x8
-  xe::be<uint32_t> unk_0C;       // 0xC
-  xe::be<uint32_t> unk_10;       // 0x10
-  xe::be<uint32_t> unk_14;    // 0x14 probably offset from ntobject to keobject
-  xe::be<uint32_t> pool_tag;  // 0x18
 };
 
 class XObject {
@@ -134,9 +102,39 @@ class XObject {
     SymbolicLink,
     Thread,
     Timer,
-	Device
+    Device
   };
 
+  static bool HasDispatcherHeader(Type type) {
+    switch (type) {
+      case Type::Event:
+      case Type::Mutant:
+      case Type::Semaphore:
+      case Type::Thread:
+      case Type::Timer:
+        return true;
+    }
+    return false;
+  }
+
+  static Type MapGuestTypeToHost(uint16_t type) {
+    // todo: this is not fully filled in
+    switch (type) {
+      case 0:
+      case 1:
+        return Type::Event;
+      case 2:
+        return Type::Mutant;
+      case 5:
+        return Type::Semaphore;
+      case 6:
+        return Type::Thread;
+      case 8:
+      case 9:
+        return Type::Timer;
+    }
+    return Type::Undefined;
+  }
   XObject(Type type);
   XObject(KernelState* kernel_state, Type type, bool host_object = false);
   virtual ~XObject();
@@ -219,12 +217,6 @@ class XObject {
   template <typename T>
   T* CreateNative() {
     return reinterpret_cast<T*>(CreateNative(sizeof(T)));
-  }
-
-  // Stash native pointer into X_DISPATCH_HEADER
-  static void StashHandle(X_DISPATCH_HEADER* header, uint32_t handle) {
-    header->wait_list_flink = kXObjSignature;
-    header->wait_list_blink = handle;
   }
 
   static uint32_t TimeoutTicksToMs(int64_t timeout_ticks);

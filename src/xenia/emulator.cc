@@ -268,7 +268,13 @@ X_STATUS Emulator::Setup(
 
   // Shared kernel state.
   kernel_state_ = std::make_unique<xe::kernel::KernelState>(this);
-
+#define LOAD_KERNEL_MODULE(t) \
+  static_cast<void>(kernel_state_->LoadKernelModule<kernel::t>())
+  // HLE kernel modules.
+  LOAD_KERNEL_MODULE(xboxkrnl::XboxkrnlModule);
+  LOAD_KERNEL_MODULE(xam::XamModule);
+  LOAD_KERNEL_MODULE(xbdm::XbdmModule);
+#undef LOAD_KERNEL_MODULE
   plugin_loader_ = std::make_unique<xe::patcher::PluginLoader>(
       kernel_state_.get(), storage_root() / "plugins");
 
@@ -288,13 +294,6 @@ X_STATUS Emulator::Setup(
     }
   }
 
-#define LOAD_KERNEL_MODULE(t) \
-  static_cast<void>(kernel_state_->LoadKernelModule<kernel::t>())
-  // HLE kernel modules.
-  LOAD_KERNEL_MODULE(xboxkrnl::XboxkrnlModule);
-  LOAD_KERNEL_MODULE(xam::XamModule);
-  LOAD_KERNEL_MODULE(xbdm::XbdmModule);
-#undef LOAD_KERNEL_MODULE
 
   // Initialize emulator fallback exception handling last.
   ExceptionHandler::Install(Emulator::ExceptionCallbackThunk, this);
@@ -330,7 +329,10 @@ const std::unique_ptr<vfs::Device> Emulator::CreateVfsDeviceBasedOnPath(
     auto parent_path = path.parent_path();
     return std::make_unique<vfs::HostPathDevice>(
         mount_path, parent_path, !cvars::allow_game_relative_writes);
-  } else if (extension == ".7z" || extension == ".zip" || extension == ".rar" ||
+  } else if (extension == ".zar") {
+    return std::make_unique<vfs::DiscZarchiveDevice>(mount_path, path);
+  }
+  else if (extension == ".7z" || extension == ".zip" || extension == ".rar" ||
              extension == ".tar" || extension == ".gz") {
     xe::ShowSimpleMessageBox(
         xe::SimpleMessageBoxType::Error,
@@ -423,6 +425,7 @@ X_STATUS Emulator::LaunchPath(const std::filesystem::path& path) {
     return LaunchXexFile(path);
   } else if (extension == ".zar") {
     // Assume a disc image.
+    MountPath(path, "\\Device\\Cdrom0");
     return LaunchDiscArchive(path);
   } else {
     // Assume a disc image.
@@ -447,35 +450,42 @@ X_STATUS Emulator::LaunchXexFile(const std::filesystem::path& path) {
 }
 
 X_STATUS Emulator::LaunchDiscImage(const std::filesystem::path& path) {
-  auto module_path(FindLaunchModule());
-  return CompleteLaunch(path, module_path);
+  std::string module_path = FindLaunchModule();
+  X_STATUS result = CompleteLaunch(path, module_path);
+
+  if (result == X_STATUS_NOT_FOUND && !cvars::launch_module.empty()) {
+    return LaunchDefaultModule(path);
+  }
+
+  return result;
 }
 
 X_STATUS Emulator::LaunchDiscArchive(const std::filesystem::path& path) {
-  auto mount_path = "\\Device\\Cdrom0";
+  std::string module_path = FindLaunchModule();
+  X_STATUS result = CompleteLaunch(path, module_path);
 
-  // Register the disc image in the virtual filesystem.
-  auto device = std::make_unique<vfs::DiscZarchiveDevice>(mount_path, path);
-  if (!device->Initialize()) {
-    xe::FatalError("Unable to mount disc image; file not found or corrupt.");
-    return X_STATUS_NO_SUCH_FILE;
-  }
-  if (!file_system_->RegisterDevice(std::move(device))) {
-    xe::FatalError("Unable to register disc image.");
-    return X_STATUS_NO_SUCH_FILE;
+  if (result == X_STATUS_NOT_FOUND && !cvars::launch_module.empty()) {
+    return LaunchDefaultModule(path);
   }
 
-  // Create symlinks to the device.
-  file_system_->RegisterSymbolicLink("game:", mount_path);
-  file_system_->RegisterSymbolicLink("d:", mount_path);
-
-  // Launch the game.
-  auto module_path(FindLaunchModule());
-  return CompleteLaunch(path, module_path);
+  return result;
 }
 
 X_STATUS Emulator::LaunchStfsContainer(const std::filesystem::path& path) {
-  auto module_path(FindLaunchModule());
+  std::string module_path = FindLaunchModule();
+  X_STATUS result = CompleteLaunch(path, module_path);
+
+  if (result == X_STATUS_NOT_FOUND && !cvars::launch_module.empty()) {
+    return LaunchDefaultModule(path);
+  }
+
+  return result;
+}
+
+X_STATUS Emulator::LaunchDefaultModule(const std::filesystem::path& path) {
+  cvars::launch_module = "";
+  std::string module_path = FindLaunchModule();
+
   return CompleteLaunch(path, module_path);
 }
 
@@ -975,7 +985,26 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
       title_version_ = format_version(title_version);
     }
   }
- 
+
+  if (xam) {
+    const std::filesystem::path launch_data_dir = "launch_data";
+    const std::filesystem::path file_path =
+        launch_data_dir /
+        fmt::format("{:08X}_launch_data.bin", title_id_.value());
+
+    auto file = xe::filesystem::OpenFile(file_path, "rb");
+    if (file) {
+      XELOGI("Found launch_data for {}", title_name_);
+      const uint64_t file_size = std::filesystem::file_size(file_path);
+      xam->loader_data().launch_data_present = true;
+      xam->loader_data().launch_data.resize(file_size);
+      fread(xam->loader_data().launch_data.data(), file_size, 1, file);
+
+      fclose(file);
+    }
+  }
+
+
   // Try and load the resource database (xex only).
   if (module->title_id()) {
     auto title_id = fmt::format("{:08X}", module->title_id());
@@ -1013,6 +1042,26 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
       }
       XELOGI("----------------- END OF ACHIEVEMENTS ----------------");
 
+      XELOGI("-------------------- PROPERTIES --------------------");
+      const std::vector<kernel::util::XdbfPropertyTableEntry> properties_list =
+          db.GetProperties();
+
+      for (const kernel::util::XdbfPropertyTableEntry& entry :
+           properties_list) {
+        std::string label = db.GetStringTableEntry(language, entry.string_id);
+        XELOGI("{:08X} - {} - {}", entry.id, label, entry.data_size);
+      }
+      XELOGI("----------------- END OF PROPERTIES ----------------");
+
+      XELOGI("-------------------- CONTEXTS --------------------");
+      const std::vector<kernel::util::XdbfContextTableEntry> contexts_list =
+          db.GetContexts();
+
+      for (const kernel::util::XdbfContextTableEntry& entry : contexts_list) {
+        std::string label = db.GetStringTableEntry(language, entry.string_id);
+        XELOGI("{:08X} - {} - {}", entry.id, label, entry.unk2);
+      }
+      XELOGI("----------------- END OF CONTEXTS ----------------");
       auto icon_block = db.icon();
       if (icon_block) {
         display_window_->SetIcon(icon_block.buffer, icon_block.size);

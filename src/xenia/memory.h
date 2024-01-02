@@ -20,7 +20,7 @@
 #include "xenia/base/memory.h"
 #include "xenia/base/mutex.h"
 #include "xenia/cpu/mmio_handler.h"
-
+#include "xenia/guest_pointers.h"
 namespace xe {
 class ByteStream;
 }  // namespace xe
@@ -369,6 +369,17 @@ class Memory {
 
 #endif
   }
+  template <typename T>
+  inline T* TranslateVirtual(TypedGuestPointer<T> guest_address) {
+    return TranslateVirtual<T*>(guest_address.m_ptr);
+  }
+  template <typename T>
+  inline xe::be<T>* TranslateVirtualBE(uint32_t guest_address)
+      XE_RESTRICT const {
+    static_assert(!std::is_pointer_v<T> &&
+                  sizeof(T) > 1);  // maybe assert is_integral?
+    return TranslateVirtual<xe::be<T>*>(guest_address);
+  }
 
   // Base address of physical memory in the host address space.
   // This is often something like 0x200000000.
@@ -500,7 +511,7 @@ class Memory {
                            uint32_t system_heap_flags = kSystemHeapDefault);
 
   // Frees memory allocated with SystemHeapAlloc.
-  void SystemHeapFree(uint32_t address);
+  void SystemHeapFree(uint32_t address, uint32_t* out_region_size=nullptr);
 
   // Gets the heap for the address space containing the given address.
   XE_NOALIAS
