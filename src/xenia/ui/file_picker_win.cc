@@ -11,6 +11,7 @@
 #include "xenia/base/platform_win.h"
 #include "xenia/base/string.h"
 #include "xenia/ui/file_picker.h"
+#include "xenia/ui/window_win.h"
 
 #include <shobjidl.h>
 
