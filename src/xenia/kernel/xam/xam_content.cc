@@ -186,7 +186,7 @@ dword_result_t xeXamContentCreate(dword_t user_index, lpstring_t root_name,
         if (!content_manager->ContentExists(content_data)) {
           result = X_ERROR_PATH_NOT_FOUND;
         } else {
-          content_manager->DeleteContent(content_data);
+          content_manager->TruncateContent(content_data);
           disposition = kDispositionState::Create;
         }
         break;

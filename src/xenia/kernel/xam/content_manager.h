@@ -166,6 +166,7 @@ class ContentManager {
   X_RESULT SetContentThumbnail(const XCONTENT_AGGREGATE_DATA& data,
                                std::vector<uint8_t> buffer);
   X_RESULT DeleteContent(const XCONTENT_AGGREGATE_DATA& data);
+  X_RESULT TruncateContent(const XCONTENT_AGGREGATE_DATA& data);
   std::filesystem::path ResolveGameUserContentPath();
   bool IsContentOpen(const XCONTENT_AGGREGATE_DATA& data) const;
   void CloseOpenedFilesFromContent(const std::string_view root_name);

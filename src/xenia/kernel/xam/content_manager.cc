@@ -331,6 +331,22 @@ X_RESULT ContentManager::DeleteContent(const XCONTENT_AGGREGATE_DATA& data) {
   }
 }
 
+X_RESULT ContentManager::TruncateContent(const XCONTENT_AGGREGATE_DATA& data) {
+  auto global_lock = global_critical_region_.Acquire();
+
+  if (!IsContentOpen(data)) {
+    // TODO(aerisarn): Get real error code for this case.
+    return X_ERROR_INVALID_HANDLE;
+  }
+
+  auto package_path = ResolvePackagePath(data);
+  if (std::filesystem::remove_all(package_path) > 0) {
+    return X_ERROR_SUCCESS;
+  } else {
+    return X_ERROR_FILE_NOT_FOUND;
+  }
+}
+
 std::filesystem::path ContentManager::ResolveGameUserContentPath() {
   auto title_id = fmt::format("{:08X}", kernel_state_->title_id());
   auto user_name =
