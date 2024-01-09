@@ -37,7 +37,9 @@
 #include "xenia/gpu/d3d12/d3d12_command_processor.h"
 #include "xenia/gpu/graphics_system.h"
 #include "xenia/hid/input_system.h"
-// #include "xenia/ui/file_picker.h" - todo, implement uwp file picker
+#if XE_PLATFORM_WINRT == 0
+#include "xenia/ui/file_picker.h" // - todo, implement uwp file picker
+#endif
 #include "xenia/ui/graphics_provider.h"
 #include "xenia/ui/imgui_dialog.h"
 #include "xenia/ui/imgui_drawer.h"
@@ -204,12 +206,14 @@ EmulatorWindow::EmulatorWindow(Emulator* emulator,
 
   LoadRecentlyLaunchedTitles();
 
+#if XE_PLATFORM_WINRT
   if (cvars::skip_frontend) {
     UWP::SelectGameFromWinRT(emulator_);
   } else {
     gamelist_ = std::unique_ptr<WinRTFrontendDialog>(
         new WinRTFrontendDialog(imgui_drawer_.get(), *this));
   }
+#endif
 }
 
 std::unique_ptr<EmulatorWindow> EmulatorWindow::Create(
@@ -1762,10 +1766,13 @@ void EmulatorWindow::AddRecentlyLaunchedTitle(
 }
 
 void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
+
+#if XE_PLATFORM_WINRT
   if (UWP::HasGamePath()) {
     UWP::SelectGameFromWinRT(emulator_window_.emulator());
     Close();
   }
+#endif
 
   // Draw Background first
   ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
@@ -1802,6 +1809,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
   if (ImGui::Begin("Frontend", nullptr, flags)) {
     if (ImGui::BeginTabBar("tabs")) {
       if (ImGui::BeginTabItem("Game List", nullptr)) {
+#if XE_PLATFORM_WINRT
         ImGui::Text("Total Games: %d", UWP::GetGames().size());
         if (ImGui::BeginListBox("##gamelist", ImVec2(-1, -1))) {
           for (const auto& set : UWP::GetGames()) {
@@ -1822,6 +1830,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
           ImGui::EndListBox();
         }
+#endif
 
         ImGui::EndTabItem();
       }
@@ -2254,7 +2263,9 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         }
 
         if (ImGui::Button("Set CL")) {
+#if XE_PLATFORM_WINRT
           UWP::ShowKeyboard();
+#endif
           ImGui::SetKeyboardFocusHere();
         }
 
@@ -2275,11 +2286,13 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
       if (ImGui::BeginTabItem("Paths", nullptr)) {
         if (ImGui::BeginListBox("##folders")) {
+#if XE_PLATFORM_WINRT
           for (auto path : UWP::GetPaths()) {
             if (ImGui::Selectable(path.c_str())) {
               selectedPath = path;
             }
           }
+#endif
           ImGui::EndListBox();
         }
 
@@ -2289,10 +2302,12 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
         if (ImGui::Button("Remove Path")) {
           if (selectedPath != "") {
+#if XE_PLATFORM_WINRT
             auto paths = UWP::GetPaths();
             paths.erase(std::remove(paths.begin(), paths.end(), selectedPath),
                         paths.end());
             UWP::SetGamePaths(paths);
+#endif
             selectedPath = "";
           }
         }
@@ -2304,6 +2319,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
         ImGui::SameLine();
         if (ImGui::Button("Add Path")) {
           imgui_drawer()->SetIgnoreInput(true);
+#if XE_PLATFORM_WINRT
           UWP::SelectFolder([this](std::string path) {
             if (path != "") {
               if (!UWP::TestPathPermissions(path)) {
@@ -2317,6 +2333,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
             imgui_drawer()->SetIgnoreInput(false);
           });
+#endif
         }
 
         ImGui::Spacing();
@@ -2334,6 +2351,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
         if (ImGui::Button("Set Config Folders Path")) {
           imgui_drawer()->SetIgnoreInput(true);
+#if XE_PLATFORM_WINRT
           UWP::SelectFolder([this, ccache_root, ccontent_root,
                              cstorage_root](std::string path) {
             if (path != "") {
@@ -2352,6 +2370,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
             imgui_drawer()->SetIgnoreInput(false);
           });
+#endif
         }
 
         ImGui::SameLine();
@@ -2463,7 +2482,9 @@ EmulatorWindow::WinRTFrontendDialog::GetOrCreateBackground() {
   if (!content_path.empty()) {
     path = content_path + "/background.png";
   } else {
+#if XE_PLATFORM_WINRT
     path = UWP::GetLocalState() + "/content/background.png";
+#endif
   }
 
   if (!std::filesystem::exists(path)) {

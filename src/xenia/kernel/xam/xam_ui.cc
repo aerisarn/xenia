@@ -447,7 +447,9 @@ class KeyboardInputDialog : public XamDialog {
 
       if (ImGui::IsItemHovered() &&
           ImGui::IsKeyDown(ImGuiKey_GamepadFaceDown)) {
+#if XE_PLATFORM_WINRT          
         UWP::ShowKeyboard();
+#endif
         ImGui::SetKeyboardFocusHere(-1);
       }
 

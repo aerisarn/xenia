@@ -244,7 +244,9 @@ void Presenter::PaintFromUIThread(bool force_paint) {
   bool draw_ui = !ui_drawers_.empty();
   bool do_paint = force_paint || draw_ui;
 
+#if XE_PLATFORM_WINRT
   UWP::SetUIOpen(draw_ui);
+#endif
 
   // Reset ui_thread_paint_requested_ unconditionally also, regardless of
   // whether the UI needs to be drawn - the flag may be set to try reconnecting,

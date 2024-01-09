@@ -485,12 +485,14 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
     return;
   }
 
+#if XE_PLATFORM_WINRT
   if (dialogs_.empty()) {
     UWP::SetUIOpen(false);
     return;
   } else {
     UWP::SetUIOpen(true);
   }
+#endif
 
   ImGui::SetCurrentContext(internal_state_);
 
@@ -562,8 +564,9 @@ void ImGuiDrawer::ClearDialogs() {
   while (dialog_loop < dialogs_.size()) {
     RemoveDialog(dialogs_[dialog_loop++]);
   }
-
+#if XE_PLATFORM_WINRT
   UWP::SetUIOpen(false);
+#endif
 }
 
 void ImGuiDrawer::RenderDrawLists(ImDrawData* data,

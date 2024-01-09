@@ -104,7 +104,9 @@ dword_result_t XamInputGetState_entry(dword_t user_index, dword_t flags,
     return X_ERROR_DEVICE_NOT_CONNECTED;
   }
 
+#if XE_PLATFORM_WINRT
   if (UWP::IsUIOpen()) return X_ERROR_SUCCESS;
+#endif
 
   // Games call this with a NULL state ptr, probably as a query.
 
@@ -161,7 +163,9 @@ dword_result_t XamInputGetKeystroke_entry(
     return X_ERROR_BAD_ARGUMENTS;
   }
 
+#if XE_PLATFORM_WINRT
   if (UWP::IsUIOpen()) return X_ERROR_SUCCESS;
+#endif
 
   if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
     // Ignore any query for other types of devices.
@@ -188,7 +192,9 @@ dword_result_t XamInputGetKeystrokeEx_entry(
     return X_ERROR_BAD_ARGUMENTS;
   }
 
+#if XE_PLATFORM_WINRT
   if (UWP::IsUIOpen()) return X_ERROR_SUCCESS;
+#endif
 
   if ((flags & XINPUT_FLAG_ANYDEVICE) && (flags & XINPUT_FLAG_GAMEPAD) == 0) {
     // Ignore any query for other types of devices.
