@@ -3316,14 +3316,15 @@ void PipelineCache::CreationThread(size_t thread_index) {
     // pipeline if there is any.
     {
       std::unique_lock<xe_mutex> lock(creation_request_lock_);
-      if (thread_index >= creation_threads_shutdown_from_ ||
+      auto _creation_threads_shutdown_from_ = creation_threads_shutdown_from_;
+      if (thread_index >= _creation_threads_shutdown_from_ ||
           creation_queue_.empty()) {
         if (creation_completion_set_event_ && creation_threads_busy_ == 0) {
           // Last pipeline in the queue created - signal the event if requested.
           creation_completion_set_event_ = false;
           creation_completion_event_->Set();
         }
-        if (thread_index >= creation_threads_shutdown_from_) {
+        if (thread_index >= _creation_threads_shutdown_from_) {
           return;
         }
         creation_request_cond_.wait(lock);
