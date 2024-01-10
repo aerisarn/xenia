@@ -173,6 +173,7 @@ namespace app {
 
 using xe::ui::FileDropEvent;
 using xe::ui::KeyEvent;
+#if !XE_PLATFORM_WINRT
 using xe::ui::MenuItem;
 #endif
 using xe::ui::UIEvent;
@@ -1721,7 +1722,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path_to_file) {
   return result;
 }
 
- void EmulatorWindow::DeleteAllSessions() {
+ /*void EmulatorWindow::DeleteAllSessions() {
 #pragma region CURL, Refactor Out
   CURL* curl = curl_easy_init();
 
@@ -1744,7 +1745,7 @@ xe::X_STATUS EmulatorWindow::RunTitle(std::filesystem::path path_to_file) {
     curl_easy_cleanup(curl);
   }
 #pragma endregion
-}
+}*/
 
 void EmulatorWindow::RunPreviouslyPlayedTitle() {
   if (recently_launched_titles_.size() >= 1) {
@@ -2536,7 +2537,7 @@ void EmulatorWindow::WinRTFrontendDialog::OnDraw(ImGuiIO& io) {
 
       if (ImGui::BeginTabItem("About", nullptr)) {
         ImGui::TextWrapped(
-            "Xenia UWP 1.1.5\nA fork of Xenia introducing Xbox support and a big "
+            "Xenia UWP 1.1.6\nA fork of Xenia introducing Xbox support and a big "
             "picture frontend.\n\n"
             "Xenia's Website: https://xenia.jp/\n"
             "Xenia's Patreon: https://www.patreon.com/xenia_project\n\n"
